@@ -1,5 +1,4 @@
 services:
-
   postgres:
     image: postgres:18-alpine
     environment:
@@ -17,13 +16,19 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+    restart: unless-stopped
 
   conformance-api:
     build:
       context: .
       dockerfile: docker/platform.Dockerfile
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://architecture_user:architecture_password@postgres:5432/architecture_monitor}
     ports:
-      - "8000:8000"
+      - "${CONFORMANCE_API_PORT:-8000}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
     healthcheck:
       test:
         - CMD
@@ -33,11 +38,33 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-    environment:
-      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://architecture_user:architecture_password@postgres:5432/architecture_monitor}
+      start_period: 10s
+    restart: unless-stopped
+
+  dashboard:
+    build:
+      context: ./dashboard
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: ""
+    ports:
+      - "${DASHBOARD_PORT:-8088}:80"
     depends_on:
-      postgres:
+      conformance-api:
         condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - wget
+        - --quiet
+        - --tries=1
+        - --spider
+        - http://localhost/
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
 
   order-service:
     build:
@@ -46,7 +73,7 @@ services:
       args:
         SERVICE_PATH: apps/order-service
     ports:
-      - "8001:8000"
+      - "${ORDER_SERVICE_PORT:-8001}:8000"
     healthcheck:
       test:
         - CMD
@@ -56,6 +83,8 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 10s
+    restart: unless-stopped
 
   payment-service:
     build:
@@ -64,7 +93,7 @@ services:
       args:
         SERVICE_PATH: apps/payment-service
     ports:
-      - "8002:8000"
+      - "${PAYMENT_SERVICE_PORT:-8002}:8000"
     healthcheck:
       test:
         - CMD
@@ -74,6 +103,8 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 10s
+    restart: unless-stopped
 
   inventory-service:
     build:
@@ -82,7 +113,7 @@ services:
       args:
         SERVICE_PATH: apps/inventory-service
     ports:
-      - "8003:8000"
+      - "${INVENTORY_SERVICE_PORT:-8003}:8000"
     healthcheck:
       test:
         - CMD
@@ -92,6 +123,8 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 10s
+    restart: unless-stopped
 
 volumes:
   postgres-data:
