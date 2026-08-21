@@ -1,0 +1,65 @@
+version: "1.0"
+
+application:
+  name: sample-commerce
+  language: python
+  architecture: microservices
+
+services:
+  order-service:
+    source_path: apps/order-service
+    database: order-db
+    allowed_calls:
+      - payment-service
+      - inventory-service
+
+  payment-service:
+    source_path: apps/payment-service
+    database: payment-db
+    allowed_calls: []
+
+  inventory-service:
+    source_path: apps/inventory-service
+    database: inventory-db
+    allowed_calls: []
+
+layer_rules:
+  api:
+    allowed_imports:
+      - services
+      - schemas
+
+  services:
+    allowed_imports:
+      - repositories
+      - models
+      - schemas
+
+  repositories:
+    allowed_imports:
+      - models
+
+  models:
+    allowed_imports: []
+
+  schemas:
+    allowed_imports: []
+
+policies:
+  unauthorized_service_call:
+    enabled: true
+    severity: high
+
+  cross_service_database_access:
+    enabled: true
+    severity: critical
+
+  layer_violation:
+    enabled: true
+    severity: high
+
+  circular_dependency:
+    enabled: true
+    severity: critical
+
+exceptions: []
