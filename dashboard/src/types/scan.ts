@@ -56,3 +56,27 @@ export interface ScanHistoryItem {
   violations_found: number
   blocking: boolean
 }
+
+export interface ViolationDetail {
+  violation_id: string
+  violation_type: string
+  severity: string
+  service_name: string
+  message: string
+  source_file: string
+  line: number
+  source_layer: string
+  target_layer: string
+  target_module: string
+  evidence_type: string
+}
+
+export interface ScanDetailResponse {
+  scan_id: number
+  generated_at: string
+  application: string
+  rules_version: string
+  blocking: boolean
+  summary: ScanSummary
+  violations: ViolationDetail[]
+}
