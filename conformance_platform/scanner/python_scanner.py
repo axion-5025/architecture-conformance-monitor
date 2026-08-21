@@ -6,7 +6,6 @@ from conformance_platform.scanner.models import (
     ServiceScanResult,
 )
 
-
 KNOWN_LAYERS = {
     "api",
     "services",
