@@ -1,4 +1,3 @@
-import json
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -14,7 +13,15 @@ from conformance_platform.debt_tracker.database import (
     create_tables,
     get_session,
 )
+from conformance_platform.debt_tracker.models import (
+    ScanRecord,
+    ViolationRecord,
+)
 from conformance_platform.debt_tracker.repository import (
+    get_latest_scan as get_latest_scan_record,
+)
+from conformance_platform.debt_tracker.repository import (
+    get_scan_by_id,
     list_scans,
     save_scan_report,
 )
@@ -46,6 +53,31 @@ class ScanResponse(BaseModel):
     report: dict[str, Any]
 
 
+class ScanSummary(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    services_scanned: int
+    files_scanned: int
+    dependencies_found: int
+    violations_found: int
+
+
+class ViolationDetail(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    violation_id: str
+    violation_type: str
+    severity: str
+    service_name: str
+    message: str
+    source_file: str
+    line: int
+    source_layer: str
+    target_layer: str
+    target_module: str
+    evidence_type: str
+
+
 class ScanHistoryItem(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -60,6 +92,76 @@ class ScanHistoryItem(BaseModel):
     blocking: bool
 
 
+class ScanDetailResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    scan_id: int
+    generated_at: str
+    application: str
+    rules_version: str
+    blocking: bool
+    summary: ScanSummary
+    violations: list[ViolationDetail]
+
+
+def _violation_to_detail(
+    violation: ViolationRecord,
+) -> ViolationDetail:
+    return ViolationDetail(
+        violation_id=violation.violation_id,
+        violation_type=violation.violation_type,
+        severity=violation.severity,
+        service_name=violation.service_name,
+        message=violation.message,
+        source_file=violation.source_file,
+        line=violation.line,
+        source_layer=violation.source_layer,
+        target_layer=violation.target_layer,
+        target_module=violation.target_module,
+        evidence_type=violation.evidence_type,
+    )
+
+
+def _scan_to_detail(
+    scan: ScanRecord,
+) -> ScanDetailResponse:
+    return ScanDetailResponse(
+        scan_id=scan.id,
+        generated_at=scan.generated_at.isoformat(),
+        application=scan.application,
+        rules_version=scan.rules_version,
+        blocking=scan.blocking,
+        summary=ScanSummary(
+            services_scanned=scan.services_scanned,
+            files_scanned=scan.files_scanned,
+            dependencies_found=scan.dependencies_found,
+            violations_found=scan.violations_found,
+        ),
+        violations=[
+            _violation_to_detail(violation)
+            for violation in scan.violations
+        ],
+    )
+
+
+def _scan_to_report(
+    scan: ScanRecord,
+) -> dict[str, Any]:
+    detail = _scan_to_detail(scan)
+
+    return {
+        "generated_at": detail.generated_at,
+        "application": detail.application,
+        "rules_version": detail.rules_version,
+        "summary": detail.summary.model_dump(),
+        "services": [],
+        "violations": [
+            violation.model_dump()
+            for violation in detail.violations
+        ],
+    }
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     create_tables()
@@ -71,7 +173,7 @@ app = FastAPI(
     description=(
         "Scans Python services and reports architecture violations."
     ),
-    version="0.2.0",
+    version="0.3.0",
     lifespan=lifespan,
 )
 
@@ -95,7 +197,7 @@ app.add_middleware(
 def health_check() -> HealthResponse:
     return HealthResponse(
         service="conformance-platform-api",
-        version="0.2.0",
+        version="0.3.0",
         status="healthy",
     )
 
@@ -134,23 +236,18 @@ def create_scan(
 def get_latest_scan(
     session: SessionDependency,
 ) -> ScanResponse:
-    scans = list_scans(session, limit=1)
+    latest_scan = get_latest_scan_record(session)
 
-    if not scans or not LATEST_REPORT_PATH.is_file():
+    if latest_scan is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="No conformance scan report is available",
+            detail="No conformance scan is available",
         )
-
-    latest_scan = scans[0]
-    report = json.loads(
-        LATEST_REPORT_PATH.read_text(encoding="utf-8")
-    )
 
     return ScanResponse(
         scan_id=latest_scan.id,
         blocking=latest_scan.blocking,
-        report=report,
+        report=_scan_to_report(latest_scan),
     )
 
 
@@ -178,3 +275,23 @@ def get_scan_history(
         )
         for record in records
     ]
+
+
+@app.get(
+    "/api/v1/scans/{scan_id}",
+    response_model=ScanDetailResponse,
+    tags=["Scans"],
+)
+def get_scan_detail(
+    scan_id: int,
+    session: SessionDependency,
+) -> ScanDetailResponse:
+    scan = get_scan_by_id(session, scan_id)
+
+    if scan is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Scan {scan_id} was not found",
+        )
+
+    return _scan_to_detail(scan)

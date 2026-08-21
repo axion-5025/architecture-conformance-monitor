@@ -46,11 +46,28 @@ def save_scan_report(
             )
         )
 
-    session.add(scan_record)
-    session.commit()
-    session.refresh(scan_record)
+    try:
+        session.add(scan_record)
+        session.commit()
+        session.refresh(scan_record)
+    except Exception:
+        session.rollback()
+        raise
 
     return scan_record
+
+
+def get_scan_by_id(
+    session: Session,
+    scan_id: int,
+) -> ScanRecord | None:
+    statement = (
+        select(ScanRecord)
+        .options(selectinload(ScanRecord.violations))
+        .where(ScanRecord.id == scan_id)
+    )
+
+    return session.scalar(statement)
 
 
 def get_latest_scan(
@@ -59,7 +76,10 @@ def get_latest_scan(
     statement = (
         select(ScanRecord)
         .options(selectinload(ScanRecord.violations))
-        .order_by(ScanRecord.generated_at.desc())
+        .order_by(
+            ScanRecord.generated_at.desc(),
+            ScanRecord.id.desc(),
+        )
         .limit(1)
     )
 
@@ -73,8 +93,10 @@ def list_scans(
 ) -> list[ScanRecord]:
     statement = (
         select(ScanRecord)
-        .options(selectinload(ScanRecord.violations))
-        .order_by(ScanRecord.generated_at.desc())
+        .order_by(
+            ScanRecord.generated_at.desc(),
+            ScanRecord.id.desc(),
+        )
         .limit(limit)
     )
 

@@ -1,6 +1,13 @@
 from datetime import UTC, datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from conformance_platform.debt_tracker.database import Base
@@ -51,6 +58,9 @@ class ScanRecord(Base):
     violations: Mapped[list["ViolationRecord"]] = relationship(
         back_populates="scan",
         cascade="all, delete-orphan",
+        passive_deletes=True,
+        lazy="selectin",
+        order_by="ViolationRecord.id",
     )
 
 
@@ -63,7 +73,10 @@ class ViolationRecord(Base):
         autoincrement=True,
     )
     scan_id: Mapped[int] = mapped_column(
-        ForeignKey("scan_records.id", ondelete="CASCADE"),
+        ForeignKey(
+            "scan_records.id",
+            ondelete="CASCADE",
+        ),
         nullable=False,
         index=True,
     )
