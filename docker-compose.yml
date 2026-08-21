@@ -1,5 +1,23 @@
 services:
 
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-architecture_monitor}
+      POSTGRES_USER: ${POSTGRES_USER:-architecture_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-architecture_password}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - "pg_isready -U ${POSTGRES_USER:-architecture_user} -d ${POSTGRES_DB:-architecture_monitor}"
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   conformance-api:
     build:
       context: .
@@ -15,6 +33,11 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://architecture_user:architecture_password@postgres:5432/architecture_monitor}
+    depends_on:
+      postgres:
+        condition: service_healthy
 
   order-service:
     build:
@@ -69,3 +92,6 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
+volumes:
+  postgres-data:
